@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
-using SimpleSalaryCalculator.Interfaces;
+﻿using SimpleSalaryCalculator.Interfaces;
 
 namespace SimpleSalaryCalculator.Deductions
 {
@@ -42,18 +37,5 @@ namespace SimpleSalaryCalculator.Deductions
 
             return (int)Math.Ceiling(deduction);
         }
-        //public int CalculateDeduction(int salary)
-        //{
-        //    double deduction = salary switch
-        //    {
-        //        _ when salary <= 18200 => 0,
-        //        _ when salary <= 37000 => (salary - 18200) * 0.19,
-        //        _ when salary <= 80000 => 3572 + (salary - 37000) * 0.325,
-        //        _ when salary <= 180000 => 17547 + (salary - 80000) * 0.37,
-        //        _ => 54547 + (salary - 180000) * 0.45,
-        //    };
-
-        //    return (int)Math.Ceiling(deduction);
-        //}
     }
 }

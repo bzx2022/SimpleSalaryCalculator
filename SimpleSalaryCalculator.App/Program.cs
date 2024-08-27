@@ -1,99 +1,133 @@
 ﻿using SimpleSalaryCalculator;
 using Microsoft.Extensions.Configuration;
 using System.Text.RegularExpressions;
+using SimpleSalaryCalculator.Models;
 
-
-//get settings from app.config
-var builder = new ConfigurationBuilder()
-    .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
-
-var config = builder.Build();
-
-var settings = config.GetSection("Settings");
-var taxYear = settings["TaxYear"] ?? "2021-22";
-var taxRateConfig = new TaxRateConfig();
-config.GetSection("TaxRates").Bind(taxRateConfig);
-var txrates = config.GetSection("TaxRates");
-foreach (var rate in txrates.GetChildren())
+class Program
 {
-    var taxYearInfo = new TaxYearInfo();
-    foreach (var bracket in rate.GetSection("Brackets").GetChildren())
+    static void Main(string[] args)
     {
-        taxYearInfo.Brackets.Add(new TaxBracket
+        var config = LoadConfiguration();
+        var settings = config.GetSection("Settings");
+        var taxYear = GetTaxYear(settings);
+        var taxRateConfig = ConfigureTaxRates(config);
+
+        var salary = GetSalary();
+        if (salary == null) return;
+
+        var payFrequency = GetPayFrequency();
+        if (payFrequency == null) return;
+
+        var payCalculator = new PayCalculator(taxRateConfig, salary.Value, payFrequency, taxYear);
+
+        try
         {
-            Minimum = bracket.GetValue<int>("Minimum"),
-            Threshold = bracket.GetValue<int?>("Threshold"),
-            Rate = bracket.GetValue<double>("Rate")
-        });
+            DisplaySalaryDetails(payCalculator.CalculatePay());
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"An error occurred: {ex.Message}");
+        }
+
+        Console.WriteLine("Press any key to end...");
+        Console.ReadKey();
     }
-    taxRateConfig.TaxRates.Add(rate.Key, taxYearInfo);
-}
 
-Console.Write("Please enter your salary package amount: ");
-var salary = 0;
-try
-{
-    salary = Convert.ToInt32(Console.ReadLine());
-}
-catch (FormatException)
-{
-    Console.WriteLine("Invalid salary amount");
-    return;
-}
-
-Console.Write("Please enter your pay frequency (W for weekly, F for Fortnightly, M for Monthly): ");
-var payFrequency = Console.ReadLine();
-
-if (string.IsNullOrEmpty(payFrequency) || payFrequency.ToUpper() != "W" && payFrequency.ToUpper() != "F" && payFrequency.ToUpper() != "M")
-{
-    Console.WriteLine("Invalid pay frequency");
-    return;
-}
-
-
-
-if (settings["EnableTaxYear"] != "false")
-{
-    Console.Write("Please enter the tax year (YYYY-YY): ");
-    taxYear = Console.ReadLine();
-
-    if (string.IsNullOrEmpty(taxYear) || !Regex.IsMatch(taxYear, @"^\d{4}-\d{2}$"))
+    private static void DisplaySalaryDetails(SalaryDetails salaryDetails)
     {
-        Console.WriteLine("Invalid tax year format");
-        return;
+        Console.WriteLine($@"Calculating salary details...
+    
+        Gross Package: {salaryDetails.GrossPackage.ToString("C")}
+        Superannuation: {salaryDetails.Superannuation.ToString("C2")}
+    
+        Taxable Income: {salaryDetails.TaxableIncome.ToString("C2")}
+    
+        Deductions:
+        Medicare Levy: {salaryDetails.MedicareLevy.ToString("C2")}
+        Budget Repair Levy: {salaryDetails.BudgetRepairLevy.ToString("C2")}
+        Income Tax: {salaryDetails.IncomeTax.ToString("C2")}
+    
+        Net Income: {   salaryDetails.NetIncome.ToString("C2")}
+        Pay Packet: {salaryDetails.PayPacket.ToString("C2")} per {salaryDetails.PayFrequency}
+        ");
+    }
+
+    private static string GetPayFrequency()
+    {
+        Console.Write("Please enter your pay frequency (W for weekly, F for Fortnightly, M for Monthly): ");
+        var payFrequency = Console.ReadLine();
+
+        if (string.IsNullOrEmpty(payFrequency) || payFrequency.ToUpper() != "W" && payFrequency.ToUpper() != "F" && payFrequency.ToUpper() != "M")
+        {
+            Console.WriteLine("Invalid pay frequency");
+            return "";
+        }
+
+        return payFrequency;
+    }
+
+    private static int? GetSalary()
+    {
+        Console.Write("Please enter your salary package amount: ");
+        try
+        {
+            return Convert.ToInt32(Console.ReadLine());
+        }
+        catch (FormatException)
+        {
+            Console.WriteLine("Invalid salary entered.");
+            return null;
+        }
+    }
+
+    private static TaxRateConfig ConfigureTaxRates(IConfigurationRoot config)
+    {
+        var taxRateConfig = new TaxRateConfig();
+
+        var taxRates = config.GetSection("TaxRates");
+        foreach (var rate in taxRates.GetChildren())
+        {
+            var taxYearInfo = new TaxYearInfo();
+            foreach (var bracket in rate.GetSection("Brackets").GetChildren())
+            {
+                taxYearInfo.Brackets.Add(new TaxBracket
+                {
+                    Minimum = bracket.GetValue<int>("Minimum"),
+                    Threshold = bracket.GetValue<int?>("Threshold"),
+                    Rate = bracket.GetValue<double>("Rate")
+                });
+            }
+            taxRateConfig.TaxRates.Add(rate.Key, taxYearInfo);
+        }
+
+        return taxRateConfig;
+    }
+
+    private static string? GetTaxYear(IConfigurationSection settings)
+    {
+        var taxYear = settings["TaxYear"] ?? "2022-23";
+
+        if (settings["EnableTaxYear"] != "false")
+        {
+            Console.Write("Please enter the tax year (YYYY-YY): ");
+            taxYear = Console.ReadLine();
+
+            if (string.IsNullOrEmpty(taxYear) || !Regex.IsMatch(taxYear, @"^\d{4}-\d{2}$"))
+            {
+                Console.WriteLine("Invalid tax year format");
+                return null;
+            }
+
+            //taxYear should also be validated against the available tax rates in appSettings.json
+        }
+
+        return taxYear;
+    }
+
+    static IConfigurationRoot LoadConfiguration()
+    {
+        var builder = new ConfigurationBuilder()
+            .AddJsonFile("appsettings.json", optional: true, reloadOnChange: true);
+        return builder.Build();
     }
 }
-
-var payCalculator = new PayCalculator(taxRateConfig, salary, payFrequency, taxYear);
-
-try
-{
-    var calculatedPay = payCalculator.CalculatePay();
-
-    Console.WriteLine($@"Calculating salary details...
-    
-    Gross Package: {calculatedPay.GrossPackage.ToString("C")}
-    Superannuation: {calculatedPay.Superannuation.ToString("C2")}
-    
-    Taxable Income: {calculatedPay.TaxableIncome.ToString("C2")}
-    
-    Deductions:
-    Medicare Levy: {calculatedPay.MedicareLevy.ToString("C2")}
-    Budget Repair Levy: {calculatedPay.BudgetRepairLevy.ToString("C2")}
-    Income Tax: {calculatedPay.IncomeTax.ToString("C2")}
-    
-    Net Income: {calculatedPay.NetIncome.ToString("C2")}
-    Pay Packet: {calculatedPay.PayPacket.ToString("C2")} per {calculatedPay.PayFrequency}
-    ");
-}
-catch (ArgumentException ex)
-{
-    Console.WriteLine($"There was an error processing your salary, message received: {ex.Message}");
-}
-catch (Exception ex)
-{
-    Console.WriteLine($"An unexpected error occurred: {ex.Message}");
-}
-Console.WriteLine("Press any key to end...");
-Console.ReadKey();
-
